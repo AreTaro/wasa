@@ -1,0 +1,316 @@
+/**
+ * GAS-REGISTRY Backend Code
+ * Google Apps Script handling Spreadsheet database and React Frontend delivery.
+ */
+
+// Global App Settings
+const SETTINGS = {
+  APPROVED_SHEET: "Approved",
+  SUBMISSION_SHEET: "Submissions",
+  APP_TITLE: "Apps Script Registry"
+};
+
+/**
+ * Run this function once from the Apps Script Editor 
+ * to initialize the necessary Spreadsheet sheets.
+ * It also triggers the authorization flow for Emails if not already granted.
+ */
+function initializeRegistry() {
+  // Force Apps Script to recognize the MailApp dependency for authorization
+  try {
+    MailApp.getRemainingDailyQuota();
+  } catch(e) {}
+
+  const doc = SpreadsheetApp.getActiveSpreadsheet();
+  
+  if (!doc.getSheetByName(SETTINGS.APPROVED_SHEET)) {
+    const sheet = doc.insertSheet(SETTINGS.APPROVED_SHEET);
+    sheet.appendRow(["ID", "Name", "Description", "WebAppUrl", "ManualUrl", "RepoUrl", "ManifestUrl", "SubmitterEmail", "DateAdded", "LastUpdated"]);
+    sheet.setFrozenRows(1);
+    Logger.log("Created Approved sheet");
+  }
+  
+  if (!doc.getSheetByName(SETTINGS.SUBMISSION_SHEET)) {
+    const sheet = doc.insertSheet(SETTINGS.SUBMISSION_SHEET);
+    sheet.appendRow(["Timestamp", "Type", "PackageID", "Name", "Description", "WebAppUrl", "ManualUrl", "RepoUrl", "ManifestUrl", "SubmitterEmail", "Status"]);
+    sheet.setFrozenRows(1);
+    Logger.log("Created Submissions sheet");
+  }
+  
+  Logger.log("Initialization complete!");
+}
+
+/**
+ * Serves the React frontend.
+ */
+function doGet(e) {
+  const template = HtmlService.createTemplateFromFile('Index');
+  
+  // Inject package data into the template to avoid extra roundtrips
+  const packages = getApprovedPackages();
+  template.initialData = JSON.stringify(packages);
+  template.scriptUrl = ScriptApp.getService().getUrl();
+  
+  return template.evaluate()
+    .setTitle(SETTINGS.APP_TITLE)
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
+/**
+ * Handles incoming POST requests from external clients (optional).
+ * Most frontend interaction will use processClientSubmission via google.script.run
+ */
+function doPost(e) {
+  try {
+    const data = JSON.parse(e.postData.contents);
+    const action = data.action;
+    
+    if (action === 'submitNew') {
+      return ContentService.createTextOutput(JSON.stringify(handleSubmission(data.payload, 'New'))).setMimeType(ContentService.MimeType.JSON);
+    } else if (action === 'submitUpdate') {
+      return ContentService.createTextOutput(JSON.stringify(handleSubmission(data.payload, 'Update'))).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Unknown action'}))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({status: 'error', message: error.toString()}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+/**
+ * Expose for client-side google.script.run
+ * Because Apps Script prevents easy CORS POST to webapp URLs from inside HTML
+ */
+function processClientSubmission(jsonString) {
+  try {
+    const data = JSON.parse(jsonString);
+    const action = data.action;
+    let res;
+    
+    if (action === 'submitNew') {
+      res = handleSubmission(data.payload, 'New');
+    } else if (action === 'submitUpdate') {
+      res = handleSubmission(data.payload, 'Update');
+    } else {
+      res = handleSubmission(data.payload, 'Unknown');
+    }
+    
+    // Return stringified JSON payload to client 
+    return JSON.stringify(res);
+  } catch(e) {
+    return JSON.stringify({status: 'error', message: e.toString()});
+  }
+}
+
+/**
+ * Retrieves all approved packages from the spreadsheet.
+ */
+function getApprovedPackages() {
+  try {
+    const doc = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = doc.getSheetByName(SETTINGS.APPROVED_SHEET);
+    if (!sheet) return [];
+    
+    const data = sheet.getDataRange().getValues();
+    if (data.length <= 1) return []; // Only headers
+    
+    const headers = data.shift(); // Remove and store headers
+    
+    // Convert rows to objects
+    return data.map(row => {
+      let obj = {};
+      headers.forEach((header, index) => {
+        // Exclude internal email from public API payload
+        if (header !== 'SubmitterEmail') {
+          obj[header] = row[index] || "";
+        }
+      });
+      return obj;
+    }).filter(pkg => pkg.Name && pkg.Name.toString().trim() !== ""); // Filter empty rows
+  } catch (e) {
+    Logger.log("Error getting packages: " + e.toString());
+    return [];
+  }
+}
+
+/**
+ * Appends a new submission to the Submissions sheet.
+ */
+function handleSubmission(payload, type) {
+  const doc = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = doc.getSheetByName(SETTINGS.SUBMISSION_SHEET);
+  
+  const timestamp = new Date();
+  const packageId = payload.id || Utilities.getUuid(); // Generate ID for new packages
+  
+  sheet.appendRow([
+    timestamp,
+    type,
+    packageId,
+    payload.name || "",
+    payload.description || "",
+    payload.webAppUrl || "",
+    payload.manualUrl || "",
+    payload.repoUrl || "",
+    payload.manifestUrl || "", // For GitLab/Idea 1
+    payload.email || "",
+    "Pending"
+  ]);
+  // Return simple object (NOT ContentService) so google.script.run can stringify it correctly back to the React frontend
+  return {
+    status: 'success', 
+    message: `Your ${type.toLowerCase()} request has been submitted and is pending review.`
+  };
+}
+
+/**
+ * Admin Menu for Spreadsheet editor
+ */
+function onOpen() {
+  const ui = SpreadsheetApp.getUi();
+  ui.createMenu('Registry Admin')
+    .addItem('Approve Selected Submissions', 'approveSelectedUi')
+    .addItem('Reject Selected Submissions', 'rejectSelectedUi')
+    .addToUi();
+}
+
+/**
+ * Loop through highlighted rows in the Submissions sheet,
+ * moves them to the Approved sheet (handling New vs Update logic),
+ * and deletes them from the Submissions sheet.
+ */
+function approveSelectedUi() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
+  const subSheet = ss.getSheetByName(SETTINGS.SUBMISSION_SHEET);
+  const appSheet = ss.getSheetByName(SETTINGS.APPROVED_SHEET);
+  
+  if (ss.getActiveSheet().getName() !== SETTINGS.SUBMISSION_SHEET) {
+    ui.alert("Error", "Please run this from the Submissions sheet.", ui.ButtonSet.OK);
+    return;
+  }
+
+  const range = subSheet.getActiveRange();
+  const startRow = range.getRow();
+  const numRows = range.getNumRows();
+
+  if (startRow <= 1) {
+    ui.alert("Error", "Please select valid submission rows (not headers).", ui.ButtonSet.OK);
+    return;
+  }
+
+  const values = subSheet.getRange(startRow, 1, numRows, subSheet.getLastColumn()).getValues();
+  
+  let approvedCount = 0;
+  
+  for (let i = 0; i < values.length; i++) {
+    const row = values[i];
+    const type = row[1]; // Type (New/Update)
+    const packageId = row[2]; // PackageID
+    
+    // Map Submission row to Approved row format:
+    // [ID, Name, Description, WebAppUrl, ManualUrl, RepoUrl, ManifestUrl, SubmitterEmail, DateAdded, LastUpdated]
+    
+    if (type === 'New') {
+      appSheet.appendRow([
+        packageId, row[3], row[4], row[5], row[6], row[7], row[8], row[9], new Date(), ""
+      ]);
+    } else if (type === 'Update') {
+      // Find row in Approved sheet to update
+      const appData = appSheet.getDataRange().getValues();
+      let rowIndexToUpdate = -1;
+      for (let r = 1; r < appData.length; r++) { // Skip header
+        if (appData[r][0] === packageId) {
+          rowIndexToUpdate = r + 1; // +1 because array is 0-indexed and sheet is 1-indexed
+          break;
+        }
+      }
+      
+      if (rowIndexToUpdate !== -1) {
+         // Update the row (keep original DateAdded, update LastUpdated)
+         const origDateAdded = appData[rowIndexToUpdate-1][8];
+         appSheet.getRange(rowIndexToUpdate, 1, 1, 10).setValues([[
+           packageId, row[3], row[4], row[5], row[6], row[7], row[8], row[9], origDateAdded, new Date()
+         ]]);
+      } else {
+         Logger.log("Update requested for PackageID " + packageId + " but it was not found in Approved sheet.");
+         ui.alert("Warning", "Package ID " + packageId + " not found for update. Skipping.", ui.ButtonSet.OK);
+         continue; // skip deletion
+      }
+    }
+    
+    // Attempt sending basic confirmation email
+    try {
+       const userEmail = String(row[9] || "").trim();
+       if (userEmail && userEmail.indexOf("@") !== -1 && userEmail.indexOf(".") !== -1) {
+          const subject = "Apps Script Registry: Package " + (type === 'New' ? "Approved" : "Updated");
+          const body = "Your package submission for '" + row[3] + "' has been approved and is now live on the registry!\n\nThank you for contributing.";
+          MailApp.sendEmail({to: userEmail, subject: subject, body: body});
+       } else {
+          Logger.log("Skipping email: invalid address -> " + row[9]);
+       }
+    } catch(e) {
+       ui.alert("Email Delivery Error", "Package moved, but failed to email " + row[9] + "\n\nError details: " + e.toString(), ui.ButtonSet.OK);
+       Logger.log("Email error: " + e.toString());
+    }
+    
+    approvedCount++;
+  }
+  
+  // Delete rows from bottom to top to preserve index integrity
+  for (let i = numRows - 1; i >= 0; i--) {
+     subSheet.deleteRow(startRow + i);
+  }
+  
+  ui.alert("Success", approvedCount + " packages processed and moved.", ui.ButtonSet.OK);
+}
+
+/**
+ * Simply deletes the highlighted rows if rejected.
+ */
+function rejectSelectedUi() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
+  const subSheet = ss.getSheetByName(SETTINGS.SUBMISSION_SHEET);
+  
+  if (ss.getActiveSheet().getName() !== SETTINGS.SUBMISSION_SHEET) {
+    ui.alert("Error", "Please run this from the Submissions sheet.", ui.ButtonSet.OK);
+    return;
+  }
+  
+  const range = subSheet.getActiveRange();
+  const startRow = range.getRow();
+  const numRows = range.getNumRows();
+
+  if (startRow <= 1) {
+    ui.alert("Error", "Please select valid submission rows (not headers).", ui.ButtonSet.OK);
+    return;
+  }
+  
+  const response = ui.alert("Confirm Reject", "Are you sure you want to permanently delete these " + numRows + " submissions?", ui.ButtonSet.YES_NO);
+  if (response == ui.Button.YES) {
+    const values = subSheet.getRange(startRow, 1, numRows, subSheet.getLastColumn()).getValues();
+
+    // Delete rows from bottom to top to preserve index integrity
+    for (let i = numRows - 1; i >= 0; i--) {
+       const row = values[i];
+       
+       // Attempt to send rejection email
+       try {
+          const userEmail = String(row[9] || "").trim();
+          if (userEmail && userEmail.indexOf("@") !== -1 && userEmail.indexOf(".") !== -1) {
+             const subject = "Apps Script Registry: Package Rejected";
+             const body = "Unfortunately, your package submission for '" + row[3] + "' was not approved for the registry at this time. Please ensure the links work and the description is clear.";
+             MailApp.sendEmail({to: userEmail, subject: subject, body: body});
+          }
+       } catch(e) {
+          ui.alert("Email Delivery Error", "Package deleted, but failed to email " + row[9] + "\n\nError details: " + e.toString(), ui.ButtonSet.OK);
+          Logger.log("Email error: " + e.toString());
+       }
+       
+       subSheet.deleteRow(startRow + i);
+    }
+  }
+}

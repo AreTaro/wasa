@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <base target="_top">
+  <!-- React & Babel -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Feather Icons -->
+  <script src="https://unpkg.com/feather-icons"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'sans-serif'] },
+          colors: {
+            brand: {
+              50: '#f0fdfa',
+              100: '#ccfbf1',
+              500: '#14b8a6',
+              600: '#0d9488',
+              900: '#134e4a',
+            }
+          }
+        }
+      }
+    }
+    // Inject Server Data
+    const SERVER_DATA = <?!= initialData ?>;
+    const SCRIPT_URL = "<?= scriptUrl ?>";
+  </script>
+  
+  <style>
+    body { background-color: #f8fafc; color: #0f172a; }
+    /* Micro-animations */
+    .hover-lift { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+    .hover-lift:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); }
+    .glass-effect { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+
+    // --- Component: Modal ---
+    const Modal = ({ isOpen, onClose, title, children }) => {
+      if (!isOpen) return null;
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm transition-opacity">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden glass-effect animate-[fadeIn_0.2s_ease-out]">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h3 className="text-xl font-semibold text-slate-800">{title}</h3>
+              <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors p-1 rounded-full hover:bg-slate-200">
+                <i data-feather="x" className="w-5 h-5"></i>
+              </button>
+            </div>
+            <div className="px-6 py-6 max-h-[75vh] overflow-y-auto">
+              {children}
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // --- Main App Component ---
+    const App = () => {
+      const [packages, setPackages] = useState(SERVER_DATA || []);
+      const [searchTerm, setSearchTerm] = useState("");
+      
+      const [isModalOpen, setIsModalOpen] = useState(false);
+      const [modalMode, setModalMode] = useState("New"); // "New" or "Update"
+      const [selectedPkg, setSelectedPkg] = useState(null);
+      
+      const [formData, setFormData] = useState({
+        name: "", description: "", email: "", webAppUrl: "", manualUrl: "", repoUrl: "", manifestUrl: ""
+      });
+      const [formStatus, setFormStatus] = useState({ pending: false, message: "", type: "" });
+
+      // Initialize icons
+      useEffect(() => { feather.replace(); });
+
+      const filteredPackages = useMemo(() => {
+        return packages.filter(p => {
+          const nameMatch = (p.Name || "").toLowerCase().includes(searchTerm.toLowerCase());
+          const descMatch = (p.Description || "").toLowerCase().includes(searchTerm.toLowerCase());
+          return nameMatch || descMatch;
+        });
+      }, [packages, searchTerm]);
+
+      const openSubmitModal = () => {
+        setModalMode("New");
+        setFormData({ name: "", description: "", email: "", webAppUrl: "", manualUrl: "", repoUrl: "", manifestUrl: "" });
+        setFormStatus({ pending: false, message: "", type: "" });
+        setIsModalOpen(true);
+      };
+
+      const openUpdateModal = (pkg) => {
+        setModalMode("Update");
+        setSelectedPkg(pkg);
+        setFormData({ 
+          name: pkg.Name, 
+          description: pkg.Description, 
+          email: "", // Require email for verification
+          webAppUrl: pkg.WebAppUrl || "", 
+          manualUrl: pkg.ManualUrl || "", 
+          repoUrl: pkg.RepoUrl || "", 
+          manifestUrl: pkg.ManifestUrl || "" 
+        });
+        setFormStatus({ pending: false, message: "", type: "" });
+        setIsModalOpen(true);
+      };
+
+      const handleFormSubmit = (e) => {
+        e.preventDefault();
+        setFormStatus({ pending: true, message: "Submitting...", type: "info" });
+        
+        const action = modalMode === 'New' ? 'submitNew' : 'submitUpdate';
+        const payload = { ...formData, id: modalMode === 'Update' ? selectedPkg.ID : undefined };
+        
+        // Use Google Apps Script backend 'processClientSubmission' for cleaner async handling
+        if (typeof google !== 'undefined' && google.script && google.script.run) {
+           google.script.run
+             .withSuccessHandler((responseString) => {
+               try {
+                 const res = JSON.parse(responseString);
+                 setFormStatus({ pending: false, message: res.message || "Success!", type: res.status });
+                 if (res.status === 'success') {
+                   setTimeout(() => {
+                     // Simply close the modal instead of reloading the page to prevent blank iframe security errors
+                     setIsModalOpen(false);
+                     setFormData({ name: "", description: "", email: "", webAppUrl: "", manualUrl: "", repoUrl: "", manifestUrl: "" });
+                   }, 2000);
+                 }
+               } catch(err) {
+                 setFormStatus({ pending: false, message: "Submission succeeded.", type: "success" });
+                 setTimeout(() => {
+                     setIsModalOpen(false);
+                 }, 2000);
+               }
+             })
+             .withFailureHandler((error) => {
+               setFormStatus({ pending: false, message: error.message || "Failed to submit.", type: "error" });
+             })
+             .processClientSubmission(JSON.stringify({ action, payload }));
+        } else {
+           // Fallback for local dev mode viewing
+           setTimeout(() => {
+             setFormStatus({ pending: false, message: "Simulated submission success (Local Mode).", type: "success" });
+             setTimeout(() => setIsModalOpen(false), 2000);
+           }, 1000);
+        }
+      };
+
+      return (
+        <div className="min-h-screen flex flex-col font-sans">
+          {/* Header */}
+          <header className="bg-slate-900 border-b-4 border-brand-500 text-white shadow-xl sticky top-0 z-40">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col md:flex-row justify-between items-center gap-4">
+              <div className="flex items-center gap-3 w-full md:w-auto">
+                <div className="p-2 bg-brand-500/20 rounded-xl">
+                  <i data-feather="box" className="w-7 h-7 text-brand-400"></i>
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold tracking-tight text-white leading-none">GAS Registry</h1>
+                  <p className="text-xs text-slate-400 mt-1 font-medium tracking-wide placeholder-slate-400">Central Package Hub</p>
+                </div>
+              </div>
+              <div className="flex w-full justify-between items-center gap-4 md:w-auto">
+                <div className="relative w-full md:w-auto group">
+                  <i data-feather="search" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-brand-400 transition-colors"></i>
+                  <input 
+                    type="text" 
+                    placeholder="Search packages..." 
+                    className="w-full md:w-64 pl-10 pr-4 py-2 bg-slate-800 border-2 border-slate-700 text-white placeholder-slate-500 rounded-xl focus:outline-none focus:border-brand-500 transition-all focus:w-full md:focus:w-80 shadow-inner"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+                <button 
+                  onClick={openSubmitModal}
+                  className="bg-brand-500 hover:bg-brand-400 text-slate-900 px-5 py-2.5 rounded-xl font-semibold transition-all hover-lift flex items-center gap-2 whitespace-nowrap shadow-lg shadow-brand-500/30"
+                >
+                  <i data-feather="plus" className="w-5 h-5"></i>
+                  <span className="hidden sm:inline">Submit Package</span>
+                  <span className="sm:hidden">Submit</span>
+                </button>
+              </div>
+            </div>
+          </header>
+
+          {/* Main Content */}
+          <main className="flex-grow w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-[800px]">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                      <th className="px-6 py-4 font-semibold text-slate-700 text-sm uppercase tracking-wider w-1/4">Package</th>
+                      <th className="px-6 py-4 font-semibold text-slate-700 text-sm uppercase tracking-wider w-5/12">Description</th>
+                      <th className="px-6 py-4 font-semibold text-slate-700 text-sm uppercase tracking-wider w-1/4">Links</th>
+                      <th className="px-6 py-4 font-semibold text-slate-700 text-sm uppercase tracking-wider text-right w-1/12 scale-90 md:scale-100">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredPackages.length === 0 ? (
+                      <tr>
+                        <td colSpan="4" className="px-6 py-16 text-center text-slate-500">
+                          <div className="bg-slate-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-200">
+                            <i data-feather="inbox" className="w-8 h-8 text-slate-400"></i>
+                          </div>
+                          <p className="text-lg font-medium text-slate-700">No packages found</p>
+                          <p className="text-sm text-slate-400 mt-1">Try adjusting your search or submit a new one.</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredPackages.map((pkg, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50 transition-colors group">
+                          <td className="px-6 py-5 align-top">
+                            <div className="font-semibold text-slate-900 text-lg flex items-center gap-2">
+                              {pkg.Name}
+                            </div>
+                            <div className="text-xs font-medium text-slate-500 mt-1.5 flex items-center gap-1.5 bg-slate-100 w-max px-2 py-0.5 rounded-md">
+                              <i data-feather="clock" className="w-3 h-3"></i> Updated {pkg.LastUpdated || pkg.DateAdded || 'recently'}
+                            </div>
+                          </td>
+                          <td className="px-6 py-5 align-top text-slate-600 leading-relaxed text-sm">
+                            {pkg.Description}
+                          </td>
+                          <td className="px-6 py-5 align-top">
+                            <div className="flex flex-col gap-2.5">
+                              {pkg.RepoUrl && (
+                                <a href={pkg.RepoUrl} target="_blank" rel="noopener noreferrer" className="text-slate-700 hover:text-slate-900 text-sm font-medium flex items-center gap-2 w-max transition-colors group/link bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg border border-slate-200">
+                                  <i data-feather="github" className="w-4 h-4 text-slate-500 group-hover/link:text-slate-700"></i> Repository
+                                </a>
+                              )}
+                              {pkg.WebAppUrl && (
+                                <a href={pkg.WebAppUrl} target="_blank" rel="noopener noreferrer" className="text-brand-700 hover:text-brand-900 text-sm font-medium flex items-center gap-2 w-max transition-colors group/link px-1">
+                                  <i data-feather="external-link" className="w-4 h-4 text-brand-500"></i> Web App
+                                </a>
+                              )}
+                              {pkg.ManualUrl && (
+                                <a href={pkg.ManualUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:text-indigo-800 text-sm font-medium flex items-center gap-2 w-max transition-colors group/link px-1 mt-0.5">
+                                  <i data-feather="book-open" className="w-4 h-4 text-indigo-400"></i> Manual
+                                </a>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-5 align-top text-right">
+                            <button 
+                              onClick={() => openUpdateModal(pkg)}
+                              title="Suggest Update"
+                              className="text-slate-400 hover:text-brand-600 text-sm font-medium transition-all p-2.5 rounded-xl hover:bg-brand-50 hover:shadow-sm inline-flex items-center justify-center border border-transparent hover:border-brand-100"
+                            >
+                              <i data-feather="edit-2" className="w-4 h-4"></i>
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </main>
+
+          {/* Footer */}
+          <footer className="bg-slate-900 border-t border-slate-800 text-slate-500 py-8 text-center text-sm">
+             <div className="flex items-center justify-center gap-2 mb-2">
+               <i data-feather="box" className="w-5 h-5 opacity-50"></i>
+             </div>
+             <p className="font-medium">Google Apps Script Package Registry</p>
+             <p className="opacity-75 mt-1">Community-driven index of reusable Apps Script projects.</p>
+          </footer>
+
+          {/* Modal */}
+          <Modal title={modalMode === 'New' ? "Submit New Package" : `Update Request: ${selectedPkg ? selectedPkg.Name : ''}`} isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}>
+            <form onSubmit={handleFormSubmit} className="space-y-5">
+              
+              {modalMode === 'Update' && (
+                 <div className="bg-slate-50 text-slate-700 shadow-inner p-4 rounded-xl text-sm border border-slate-200 flex items-start gap-3">
+                   <i data-feather="info" className="w-5 h-5 text-brand-500 shrink-0"></i>
+                   <p>Suggest an update for this package. The administrators will review changes before they go live on the registry.</p>
+                 </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="block text-sm font-semibold text-slate-700">Package Name <span className="text-red-500">*</span></label>
+                <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="e.g. SimpleMailMerge" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-900 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 focus:bg-white transition-all outline-none" />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-sm font-semibold text-slate-700">Description <span className="text-red-500">*</span></label>
+                <textarea required rows="3" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="What does this package do?" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-900 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 focus:bg-white transition-all outline-none resize-y"></textarea>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-sm font-semibold text-slate-700">Author / Submitter Email <span className="text-red-500">*</span></label>
+                <input required type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="Used for status updates and proof of ownership" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-900 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 focus:bg-white transition-all outline-none" />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-semibold text-slate-700">Code / Repo URL <span className="text-red-500">*</span></label>
+                  <input required type="url" value={formData.repoUrl} onChange={e => setFormData({...formData, repoUrl: e.target.value})} placeholder="https://gitlab.com/..." className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-900 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 focus:bg-white transition-all outline-none" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-semibold text-slate-700">Manual / Docs URL <span className="text-red-500">*</span></label>
+                  <input required type="url" value={formData.manualUrl} onChange={e => setFormData({...formData, manualUrl: e.target.value})} placeholder="https://..." className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-900 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 focus:bg-white transition-all outline-none" />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-sm font-semibold text-slate-700">Web App Demo URL <span className="text-slate-400 font-normal">(Optional)</span></label>
+                <input type="url" value={formData.webAppUrl} onChange={e => setFormData({...formData, webAppUrl: e.target.value})} placeholder="Deployed GAS Web App link" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-900 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 focus:bg-white transition-all outline-none" />
+              </div>
+
+              <div className="p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
+                <label className="block text-sm font-bold text-indigo-900 mb-1 flex items-center gap-2">
+                  <i data-feather="refresh-cw" className="w-4 h-4 text-indigo-500"></i> Auto-Update Settings
+                </label>
+                <div className="mt-2 space-y-1.5">
+                  <label className="block text-sm font-medium text-slate-700">GitLab Manifest URL <span className="text-slate-400 font-normal">(Optional)</span></label>
+                  <input type="url" value={formData.manifestUrl} onChange={e => setFormData({...formData, manifestUrl: e.target.value})} placeholder="https://gitlab.com/.../-/raw/main/gas-manifest.json" className="w-full px-4 py-2 bg-white border border-slate-200 text-slate-900 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none text-sm" />
+                  <p className="text-xs text-slate-500 font-medium">Link to a raw JSON manifest. The registry will poll this to automatically update your description.</p>
+                </div>
+              </div>
+
+              {formStatus.message && (
+                <div className={`p-4 rounded-xl text-sm font-medium flex items-center gap-3 animate-[fadeIn_0.3s_ease-out] border ${
+                  formStatus.type === 'error' ? 'bg-red-50 text-red-800 border-red-200' : 
+                  formStatus.type === 'success' ? 'bg-green-50 text-green-800 border-green-200' : 
+                  'bg-blue-50 text-blue-800 border-blue-200'
+                }`}>
+                  <i data-feather={formStatus.type === 'error' ? 'alert-triangle' : formStatus.type === 'success' ? 'check-circle' : 'loader'} className={`w-5 h-5 shrink-0 ${formStatus.type === 'info' && 'animate-spin'}`}></i>
+                  {formStatus.message}
+                </div>
+              )}
+
+              <div className="pt-2 flex flex-col-reverse sm:flex-row justify-end gap-3">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-2.5 text-slate-600 font-semibold hover:bg-slate-100 rounded-xl transition-colors sm:w-auto w-full">Cancel</button>
+                <button type="submit" disabled={formStatus.pending} className="px-6 py-2.5 bg-brand-600 hover:bg-brand-500 text-white font-semibold rounded-xl shadow-md shadow-brand-500/30 transition-all disabled:opacity-70 disabled:hover:bg-brand-600 flex items-center justify-center gap-2 sm:w-auto w-full group/btn">
+                  {formStatus.pending ? 'Processing...' : modalMode === 'New' ? (
+                    <><i data-feather="upload-cloud" className="w-4 h-4"></i> Submit Package</>
+                  ) : (
+                    <><i data-feather="send" className="w-4 h-4"></i> Send Update Request</>
+                  )}
+                </button>
+              </div>
+            </form>
+          </Modal>
+
+        </div>
+      );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
