@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <base target="_top">
@@ -7,13 +8,13 @@
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  
+
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  
+
   <!-- Google Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  
+
   <!-- Feather Icons -->
   <script src="https://unpkg.com/feather-icons"></script>
 
@@ -24,11 +25,16 @@
           fontFamily: { sans: ['Inter', 'sans-serif'] },
           colors: {
             brand: {
-              50: '#f0fdfa',
-              100: '#ccfbf1',
-              500: '#14b8a6',
-              600: '#0d9488',
-              900: '#134e4a',
+              50: '#fef2f2',
+              100: '#fee2e2',
+              400: '#f87171',
+              500: '#E52E32', // Main ELPA Red
+              600: '#dc2626',
+              900: '#7f1d1d',
+            },
+            slate: {
+              800: '#1e293b', // <-- Put you custom background color here
+              900: '#0f172a', // <-- Header borde color here
             }
           }
         }
@@ -37,22 +43,38 @@
     // Inject Server Data
     const SERVER_DATA = <?!= initialData ?>;
   </script>
-  
+
   <style>
-    body { background-color: #f8fafc; color: #0f172a; }
+    body {
+      background-color: #f8fafc;
+      color: #0f172a;
+    }
+
     /* Micro-animations */
-    .hover-lift { transition: transform 0.2s ease, box-shadow 0.2s ease; }
-    .hover-lift:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); }
-    .glass-effect { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); }
+    .hover-lift {
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .hover-lift:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    }
+
+    .glass-effect {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
   </style>
 </head>
+
 <body>
   <div id="root"></div>
 
   <script type="text/babel">
     const { useState, useEffect, useMemo } = React;
 
-    
+
     // --- Component: Icon ---
     const Icon = ({ name, className }) => {
       if (!window.feather || !window.feather.icons[name]) return null;
@@ -66,9 +88,9 @@
       return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm transition-opacity">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden glass-effect animate-[fadeIn_0.2s_ease-out]">
-            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h3 className="text-xl font-semibold text-slate-800">{title}</h3>
-              <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors p-1 rounded-full hover:bg-slate-200">
+            <div className="px-6 py-4 border-b border-brand-600 flex justify-between items-center bg-brand-500">
+              <h3 className="text-xl font-semibold text-white">{title}</h3>
+              <button type="button" onClick={onClose} className="text-white/80 hover:text-white transition-colors p-1 rounded-full hover:bg-brand-600">
                 <Icon name="x" className="w-5 h-5" />
               </button>
             </div>
@@ -84,18 +106,18 @@
     const App = () => {
       const [packages, setPackages] = useState(SERVER_DATA || []);
       const [searchTerm, setSearchTerm] = useState("");
-      
+
       const [isModalOpen, setIsModalOpen] = useState(false);
       const [modalMode, setModalMode] = useState("New"); // "New" or "Update"
       const [selectedPkg, setSelectedPkg] = useState(null);
-      
+
       const [formData, setFormData] = useState({
         name: "", description: "", email: "", webAppUrl: "", manualUrl: "", repoUrl: "", manifestUrl: ""
       });
       const [formStatus, setFormStatus] = useState({ pending: false, message: "", type: "" });
 
       // Initialize icons
-      
+
 
       const filteredPackages = useMemo(() => {
         return packages.filter(p => {
@@ -115,91 +137,91 @@
       const openUpdateModal = (pkg) => {
         setModalMode("Update");
         setSelectedPkg(pkg);
-        setFormData({ 
-          name: pkg.Name, 
-          description: pkg.Description, 
+        setFormData({
+          name: pkg.Name,
+          description: pkg.Description,
           email: "", // Require email for verification
-          webAppUrl: pkg.WebAppUrl || "", 
-          manualUrl: pkg.ManualUrl || "", 
-          repoUrl: pkg.RepoUrl || "", 
-          manifestUrl: pkg.ManifestUrl || "" 
+          webAppUrl: pkg.WebAppUrl || "",
+          manualUrl: pkg.ManualUrl || "",
+          repoUrl: pkg.RepoUrl || "",
+          manifestUrl: pkg.ManifestUrl || ""
         });
         setFormStatus({ pending: false, message: "", type: "" });
         setIsModalOpen(true);
       };
 
       const handleFormSubmit = (e) => {
-        if(e) e.preventDefault();
+        if (e) e.preventDefault();
         console.log("Form submit triggered. Payload:", formData);
         setFormStatus({ pending: true, message: "Submitting...", type: "info" });
-        
+
         const action = modalMode === 'New' ? 'submitNew' : 'submitUpdate';
         const payload = { ...formData, id: modalMode === 'Update' ? selectedPkg.ID : undefined };
-        
+
         if (typeof google !== 'undefined' && google.script && google.script.run) {
-           console.log("Calling google.script.run.processClientSubmission...");
-           google.script.run
-             .withSuccessHandler((responseString) => {
-               console.log("Received success handler payload:", responseString);
-               try {
-                 const res = typeof responseString === 'string' ? JSON.parse(responseString) : responseString;
-                 console.log("Parsed response:", res);
-                 setFormStatus({ pending: false, message: res.message || "Success!", type: res.status === 'success' ? 'success' : 'error' });
-                 
-                 if (res.status === 'success') {
-                   setTimeout(() => {
-                     console.log("Closing modal on success...");
-                     setIsModalOpen(false);
-                     setFormData({ name: "", description: "", email: "", webAppUrl: "", manualUrl: "", repoUrl: "", manifestUrl: "" });
-                   }, 2000);
-                 }
-               } catch(err) {
-                 console.error("Error parsing success payload:", err);
-                 setFormStatus({ pending: false, message: "Submission format error. Check console.", type: "error" });
-               }
-             })
-             .withFailureHandler((error) => {
-               console.error("Received failure handler payload:", error);
-               setFormStatus({ pending: false, message: error.message || "Failed to submit.", type: "error" });
-             })
-             .processClientSubmission(JSON.stringify({ action, payload }));
+          console.log("Calling google.script.run.processClientSubmission...");
+          google.script.run
+            .withSuccessHandler((responseString) => {
+              console.log("Received success handler payload:", responseString);
+              try {
+                const res = typeof responseString === 'string' ? JSON.parse(responseString) : responseString;
+                console.log("Parsed response:", res);
+                setFormStatus({ pending: false, message: res.message || "Success!", type: res.status === 'success' ? 'success' : 'error' });
+
+                if (res.status === 'success') {
+                  setTimeout(() => {
+                    console.log("Closing modal on success...");
+                    setIsModalOpen(false);
+                    setFormData({ name: "", description: "", email: "", webAppUrl: "", manualUrl: "", repoUrl: "", manifestUrl: "" });
+                  }, 2000);
+                }
+              } catch (err) {
+                console.error("Error parsing success payload:", err);
+                setFormStatus({ pending: false, message: "Submission format error. Check console.", type: "error" });
+              }
+            })
+            .withFailureHandler((error) => {
+              console.error("Received failure handler payload:", error);
+              setFormStatus({ pending: false, message: error.message || "Failed to submit.", type: "error" });
+            })
+            .processClientSubmission(JSON.stringify({ action, payload }));
         } else {
-           console.log("Local mode triggered");
-           setTimeout(() => {
-             setFormStatus({ pending: false, message: "Simulated submission success (Local Mode).", type: "success" });
-             setTimeout(() => setIsModalOpen(false), 2000);
-           }, 1000);
+          console.log("Local mode triggered");
+          setTimeout(() => {
+            setFormStatus({ pending: false, message: "Simulated submission success (Local Mode).", type: "success" });
+            setTimeout(() => setIsModalOpen(false), 2000);
+          }, 1000);
         }
       };
 
       return (
         <div className="min-h-screen flex flex-col font-sans">
           {/* Header */}
-          <header className="bg-slate-900 border-b-4 border-brand-500 text-white shadow-xl sticky top-0 z-40">
+          <header className="bg-brand-500 border-b-4 border-brand-600 text-white shadow-xl sticky top-0 z-40">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col md:flex-row justify-between items-center gap-4">
               <div className="flex items-center gap-3 w-full md:w-auto">
-                <div className="p-2 bg-brand-500/20 rounded-xl">
-                  <Icon name="box" className="w-7 h-7 text-brand-400" />
+                <div className="p-2 bg-white/20 rounded-xl hover:bg-white/30 transition-colors">
+                  <Icon name="box" className="w-7 h-7 text-white" />
                 </div>
                 <div>
                   <h1 className="text-2xl font-bold tracking-tight text-white leading-none">GAS Registry</h1>
-                  <p className="text-xs text-slate-400 mt-1 font-medium tracking-wide placeholder-slate-400">Central Package Hub</p>
+                  <p className="text-xs text-brand-100 mt-1 font-medium tracking-wide">Central Package Hub</p>
                 </div>
               </div>
               <div className="flex w-full justify-between items-center gap-4 md:w-auto">
                 <div className="relative w-full md:w-auto group">
-                  <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-brand-400 transition-colors" />
-                  <input 
-                    type="text" 
-                    placeholder="Search packages..." 
-                    className="w-full md:w-64 pl-10 pr-4 py-2 bg-slate-800 border-2 border-slate-700 text-white placeholder-slate-500 rounded-xl focus:outline-none focus:border-brand-500 transition-all focus:w-full md:focus:w-80 shadow-inner"
+                  <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-200 group-focus-within:text-slate-400 transition-colors z-10" />
+                  <input
+                    type="text"
+                    placeholder="Search packages..."
+                    className="w-full md:w-64 pl-10 pr-4 py-2 bg-brand-600 border-2 border-transparent text-white placeholder-brand-200 rounded-xl focus:outline-none focus:bg-white focus:text-slate-900 focus:placeholder-slate-400 transition-all focus:w-full md:focus:w-80 shadow-inner"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
                 </div>
-                <button 
+                <button
                   onClick={openSubmitModal}
-                  className="bg-brand-500 hover:bg-brand-400 text-slate-900 px-5 py-2.5 rounded-xl font-semibold transition-all hover-lift flex items-center gap-2 whitespace-nowrap shadow-lg shadow-brand-500/30"
+                  className="bg-white hover:bg-slate-50 text-brand-600 px-5 py-2.5 rounded-xl font-semibold transition-all hover-lift flex items-center gap-2 whitespace-nowrap shadow-lg shadow-black/10"
                 >
                   <Icon name="plus" className="w-5 h-5" />
                   <span className="hidden sm:inline">Submit Package</span>
@@ -251,7 +273,7 @@
                             <div className="flex flex-col gap-2.5">
                               {pkg.RepoUrl && (
                                 <a href={pkg.RepoUrl} target="_blank" rel="noopener noreferrer" className="text-slate-700 hover:text-slate-900 text-sm font-medium flex items-center gap-2 w-max transition-colors group/link bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg border border-slate-200">
-                                  <Icon name="github" className="w-4 h-4 text-slate-500 group-hover/link:text-slate-700" /> Repository
+                                  <Icon name="gitlab" className="w-4 h-4 text-slate-500 group-hover/link:text-slate-700" /> Source Code
                                 </a>
                               )}
                               {pkg.WebAppUrl && (
@@ -260,14 +282,14 @@
                                 </a>
                               )}
                               {pkg.ManualUrl && (
-                                <a href={pkg.ManualUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:text-indigo-800 text-sm font-medium flex items-center gap-2 w-max transition-colors group/link px-1 mt-0.5">
-                                  <Icon name="book-open" className="w-4 h-4 text-indigo-400" /> Manual
+                                <a href={pkg.ManualUrl} target="_blank" rel="noopener noreferrer" className="text-slate-600 hover:text-brand-600 text-sm font-medium flex items-center gap-2 w-max transition-colors group/link px-1 mt-0.5">
+                                  <Icon name="book-open" className="w-4 h-4 text-slate-400 group-hover/link:text-brand-500" /> Manual
                                 </a>
                               )}
                             </div>
                           </td>
                           <td className="px-6 py-5 align-top text-right">
-                            <button 
+                            <button
                               onClick={() => openUpdateModal(pkg)}
                               title="Suggest Update"
                               className="text-slate-400 hover:text-brand-600 text-sm font-medium transition-all p-2.5 rounded-xl hover:bg-brand-50 hover:shadow-sm inline-flex items-center justify-center border border-transparent hover:border-brand-100"
@@ -285,54 +307,54 @@
           </main>
 
           {/* Footer */}
-          <footer className="bg-slate-900 border-t border-slate-800 text-slate-500 py-8 text-center text-sm">
-             <div className="flex items-center justify-center gap-2 mb-2">
-               <Icon name="box" className="w-5 h-5 opacity-50" />
-             </div>
-             <p className="font-medium">Google Apps Script Package Registry</p>
-             <p className="opacity-75 mt-1">Community-driven index of reusable Apps Script projects.</p>
+          <footer className="bg-brand-500 border-t border-brand-600 text-white/90 py-8 text-center text-sm">
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <Icon name="box" className="w-5 h-5 opacity-80" />
+            </div>
+            <p className="font-medium text-white">Google Apps Script Package Registry</p>
+            <p className="opacity-80 mt-1">Community-driven index of reusable Apps Script projects.</p>
           </footer>
 
           {/* Modal */}
           <Modal title={modalMode === 'New' ? "Submit New Package" : `Update Request: ${selectedPkg ? selectedPkg.Name : ''}`} isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}>
             <form onSubmit={handleFormSubmit} className="space-y-5">
-              
+
               {modalMode === 'Update' && (
-                 <div className="bg-slate-50 text-slate-700 shadow-inner p-4 rounded-xl text-sm border border-slate-200 flex items-start gap-3">
-                   <Icon name="info" className="w-5 h-5 text-brand-500 shrink-0" />
-                   <p>Suggest an update for this package. The administrators will review changes before they go live on the registry.</p>
-                 </div>
+                <div className="bg-slate-50 text-slate-700 shadow-inner p-4 rounded-xl text-sm border border-slate-200 flex items-start gap-3">
+                  <Icon name="info" className="w-5 h-5 text-brand-500 shrink-0" />
+                  <p>Suggest an update for this package. The administrators will review changes before they go live on the registry.</p>
+                </div>
               )}
 
               <div className="space-y-1.5">
                 <label className="block text-sm font-semibold text-slate-700">Package Name <span className="text-red-500">*</span></label>
-                <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="e.g. SimpleMailMerge" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-900 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 focus:bg-white transition-all outline-none" />
+                <input required type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="e.g. SimpleMailMerge" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-900 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 focus:bg-white transition-all outline-none" />
               </div>
 
               <div className="space-y-1.5">
                 <label className="block text-sm font-semibold text-slate-700">Description <span className="text-red-500">*</span></label>
-                <textarea required rows="3" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="What does this package do?" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-900 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 focus:bg-white transition-all outline-none resize-y"></textarea>
+                <textarea required rows="3" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} placeholder="What does this package do?" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-900 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 focus:bg-white transition-all outline-none resize-y"></textarea>
               </div>
 
               <div className="space-y-1.5">
                 <label className="block text-sm font-semibold text-slate-700">Author / Submitter Email <span className="text-red-500">*</span></label>
-                <input required type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="Used for status updates and proof of ownership" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-900 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 focus:bg-white transition-all outline-none" />
+                <input required type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} placeholder="Used for status updates and proof of ownership" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-900 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 focus:bg-white transition-all outline-none" />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="space-y-1.5">
                   <label className="block text-sm font-semibold text-slate-700">Code / Repo URL <span className="text-red-500">*</span></label>
-                  <input required type="url" value={formData.repoUrl} onChange={e => setFormData({...formData, repoUrl: e.target.value})} placeholder="https://gitlab.com/..." className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-900 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 focus:bg-white transition-all outline-none" />
+                  <input required type="url" value={formData.repoUrl} onChange={e => setFormData({ ...formData, repoUrl: e.target.value })} placeholder="https://gitlab.com/..." className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-900 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 focus:bg-white transition-all outline-none" />
                 </div>
                 <div className="space-y-1.5">
                   <label className="block text-sm font-semibold text-slate-700">Manual / Docs URL <span className="text-red-500">*</span></label>
-                  <input required type="url" value={formData.manualUrl} onChange={e => setFormData({...formData, manualUrl: e.target.value})} placeholder="https://..." className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-900 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 focus:bg-white transition-all outline-none" />
+                  <input required type="url" value={formData.manualUrl} onChange={e => setFormData({ ...formData, manualUrl: e.target.value })} placeholder="https://..." className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-900 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 focus:bg-white transition-all outline-none" />
                 </div>
               </div>
 
               <div className="space-y-1.5">
                 <label className="block text-sm font-semibold text-slate-700">Web App Demo URL <span className="text-slate-400 font-normal">(Optional)</span></label>
-                <input type="url" value={formData.webAppUrl} onChange={e => setFormData({...formData, webAppUrl: e.target.value})} placeholder="Deployed GAS Web App link" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-900 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 focus:bg-white transition-all outline-none" />
+                <input type="url" value={formData.webAppUrl} onChange={e => setFormData({ ...formData, webAppUrl: e.target.value })} placeholder="Deployed GAS Web App link" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-900 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 focus:bg-white transition-all outline-none" />
               </div>
 
               <div className="p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
@@ -341,17 +363,16 @@
                 </label>
                 <div className="mt-2 space-y-1.5">
                   <label className="block text-sm font-medium text-slate-700">GitLab Manifest URL <span className="text-slate-400 font-normal">(Optional)</span></label>
-                  <input type="url" value={formData.manifestUrl} onChange={e => setFormData({...formData, manifestUrl: e.target.value})} placeholder="https://gitlab.com/.../-/raw/main/gas-manifest.json" className="w-full px-4 py-2 bg-white border border-slate-200 text-slate-900 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none text-sm" />
+                  <input type="url" value={formData.manifestUrl} onChange={e => setFormData({ ...formData, manifestUrl: e.target.value })} placeholder="https://gitlab.com/.../-/raw/main/gas-manifest.json" className="w-full px-4 py-2 bg-white border border-slate-200 text-slate-900 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none text-sm" />
                   <p className="text-xs text-slate-500 font-medium">Link to a raw JSON manifest. The registry will poll this to automatically update your description.</p>
                 </div>
               </div>
 
               {formStatus.message && (
-                <div className={`p-4 rounded-xl text-sm font-medium flex items-center gap-3 animate-[fadeIn_0.3s_ease-out] border ${
-                  formStatus.type === 'error' ? 'bg-red-50 text-red-800 border-red-200' : 
-                  formStatus.type === 'success' ? 'bg-green-50 text-green-800 border-green-200' : 
-                  'bg-blue-50 text-blue-800 border-blue-200'
-                }`}>
+                <div className={`p-4 rounded-xl text-sm font-medium flex items-center gap-3 animate-[fadeIn_0.3s_ease-out] border ${formStatus.type === 'error' ? 'bg-red-50 text-red-800 border-red-200' :
+                  formStatus.type === 'success' ? 'bg-green-50 text-green-800 border-green-200' :
+                    'bg-blue-50 text-blue-800 border-blue-200'
+                  }`}>
                   <Icon name={formStatus.type === 'error' ? 'alert-triangle' : formStatus.type === 'success' ? 'check-circle' : 'loader'} className={`w-5 h-5 shrink-0 ${formStatus.type === 'info' && 'animate-spin'}`} />
                   {formStatus.message}
                 </div>
@@ -378,4 +399,5 @@
     root.render(<App />);
   </script>
 </body>
+
 </html>
