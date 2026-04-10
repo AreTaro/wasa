@@ -7,8 +7,20 @@
 const SETTINGS = {
   APPROVED_SHEET: "Approved",
   SUBMISSION_SHEET: "Submissions",
-  APP_TITLE: "Apps Script Registry"
+  APP_TITLE: "Apps Script Registry",
+  ALLOWED_MANIFEST_DOMAINS: ["gitlab.com", "raw.githubusercontent.com", "script.google.com"]
 };
+
+// Security Helpers
+function sanitizeCell(val) {
+  if (typeof val === 'string' && /^[=+\-@]/.test(val)) return "'" + val;
+  return val;
+}
+
+function getOrgDomain() {
+  const email = Session.getEffectiveUser().getEmail();
+  return email ? email.split('@')[1] : null;
+}
 
 /**
  * Automatically fetches the GitLab/GitHub manifest URL for all approved packages
@@ -33,6 +45,11 @@ function pollManifestUpdates() {
     
     // If there is an auto-update URL
     if (manifestUrl && manifestUrl.startsWith("http")) {
+      const isAllowed = SETTINGS.ALLOWED_MANIFEST_DOMAINS.some(domain => manifestUrl.includes(domain));
+      if (!isAllowed) {
+        Logger.log(`Skipping manifest fetch for ${packageId} due to unapproved domain.`);
+        continue;
+      }
       try {
         // Fetch the raw JSON from the URL
         const response = UrlFetchApp.fetch(manifestUrl, {muteHttpExceptions: true});
@@ -98,7 +115,7 @@ function doGet(e) {
 
   // Inject package data into the template to avoid extra roundtrips
   const packages = getApprovedPackages();
-  template.initialData = JSON.stringify(packages);
+  template.initialData = JSON.stringify(packages).replace(/</g, '\\x3c');
 
   return template.evaluate()
     .setTitle(SETTINGS.APP_TITLE)
@@ -187,13 +204,39 @@ function getApprovedPackages() {
  * Appends a new submission to the Submissions sheet.
  */
 function handleSubmission(payload, type) {
+  // 1. Rate Limiting (DoS Mitigation) based on active user
+  const userCache = CacheService.getUserCache();
+  if (userCache) {
+    const submitCount = parseInt(userCache.get("submit_count") || "0", 10);
+    if (submitCount > 10) {
+      return { status: 'error', message: 'Too many submissions. Please wait a minute and try again.' };
+    }
+    userCache.put("submit_count", (submitCount + 1).toString(), 60);
+  }
+
+  // 2. Domain verification (Email spoofing mitigation)
+  const orgDomain = getOrgDomain();
+  const userEmail = payload.email || "";
+  if (orgDomain && userEmail && userEmail.split('@')[1] !== orgDomain) {
+    return { status: 'error', message: `Email must belong to the ${orgDomain} organization domain.` };
+  }
+
+  // 3. SSRF Check on Manifest URL
+  if (payload.manifestUrl) {
+    const isAllowed = SETTINGS.ALLOWED_MANIFEST_DOMAINS.some(domain => payload.manifestUrl.includes(domain));
+    if (!isAllowed) {
+      return { status: 'error', message: 'Manifest URL must be hosted on gitlab.com or raw.githubusercontent.com' };
+    }
+  }
+
   const doc = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = doc.getSheetByName(SETTINGS.SUBMISSION_SHEET);
 
   const timestamp = new Date();
   const packageId = payload.id || Utilities.getUuid(); // Generate ID for new packages
 
-  sheet.appendRow([
+  // 4. Sanitize inputs to avert Spreadsheet injection
+  const safeRow = [
     timestamp,
     type,
     packageId,
@@ -205,7 +248,9 @@ function handleSubmission(payload, type) {
     payload.manifestUrl || "",
     payload.email || "",
     "Pending"
-  ]);
+  ].map(sanitizeCell);
+
+  sheet.appendRow(safeRow);
 
   return {
     status: 'success',
@@ -292,10 +337,15 @@ function approveSelectedUi() {
     // Attempt sending basic confirmation email
     try {
       const userEmail = String(row[9] || "").trim();
+      const orgDomain = getOrgDomain();
       if (userEmail && userEmail.indexOf("@") !== -1 && userEmail.indexOf(".") !== -1) {
-        const subject = "Apps Script Registry: Package " + (type === 'New' ? "Approved" : "Updated");
-        const body = "Your package submission for '" + row[3] + "' has been approved and is now live on the registry!\n\nThank you for contributing.";
-        MailApp.sendEmail({ to: userEmail, subject: subject, body: body });
+        if (orgDomain && userEmail.split('@')[1] !== orgDomain) {
+          Logger.log("Skipping email: Domain mismatch -> " + userEmail);
+        } else {
+          const subject = "Apps Script Registry: Package " + (type === 'New' ? "Approved" : "Updated");
+          const body = "Your package submission for '" + row[3] + "' has been approved and is now live on the registry!\n\nThank you for contributing.";
+          MailApp.sendEmail({ to: userEmail, subject: subject, body: body });
+        }
       } else {
         Logger.log("Skipping email: invalid address -> " + row[9]);
       }
@@ -348,10 +398,15 @@ function rejectSelectedUi() {
       // Attempt to send rejection email
       try {
         const userEmail = String(row[9] || "").trim();
+        const orgDomain = getOrgDomain();
         if (userEmail && userEmail.indexOf("@") !== -1 && userEmail.indexOf(".") !== -1) {
-          const subject = "Apps Script Registry: Package Rejected";
-          const body = "Unfortunately, your package submission for '" + row[3] + "' was not approved for the registry at this time. Please ensure the links work and the description is clear.";
-          MailApp.sendEmail({ to: userEmail, subject: subject, body: body });
+          if (orgDomain && userEmail.split('@')[1] !== orgDomain) {
+            Logger.log("Skipping email: Domain mismatch -> " + userEmail);
+          } else {
+            const subject = "Apps Script Registry: Package Rejected";
+            const body = "Unfortunately, your package submission for '" + row[3] + "' was not approved for the registry at this time. Please ensure the links work and the description is clear.";
+            MailApp.sendEmail({ to: userEmail, subject: subject, body: body });
+          }
         }
       } catch (e) {
         ui.alert("Email Delivery Error", "Package deleted, but failed to email " + row[9] + "\n\nError details: " + e.toString(), ui.ButtonSet.OK);

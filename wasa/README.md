@@ -62,3 +62,13 @@ Our backend (`pollManifestUpdates`) expects this file to be a valid JSON object 
 - Developers **must** provide the raw link (not the HTML website page).
 - On **GitLab**: `https://gitlab.com/<user>/<repo>/-/raw/main/manifest.json`
 - On **GitHub**: `https://raw.githubusercontent.com/<user>/<repo>/main/manifest.json`
+- On **Apps Script**: `https://script.google.com/macros/s/<deploy_id>/exec`
+
+## Enterprise Security Architecture
+This project is built to operate safely within an enterprise Google Workspace environment, implementing several core protections:
+
+1. **Spreadsheet Formula Injection Protection:** All user submissions are sanitized. Any row string starting with `=, +, -, @` is forced to plaintext to prevent malicious code execution within the spreadsheet view.
+2. **Workspace Anti-DoS Quotas:** The system utilizes `CacheService` to aggressively rate-limit submissions (60-second cooldown per user), proactively protecting enterprise Google API limits from bot spam.
+3. **Email Spoofing Prevention:** Submissions and automated admin notifications strictly enforce domain matching against the executing Workspace organization. The app cannot be weaponized to spam or phish external email addresses.
+4. **SSRF Allowlist:** To prevent Server-Side Request Forgery via Apps Script's `UrlFetchApp`, manifest links are strictly verified against an explicit list of trusted domains (`gitlab.com`, `githubusercontent.com`, `script.google.com`).
+5. **JSON XSS Escaping:** Data bridged between Apps Script and the React frontend is unicode-escaped to prevent sandbox breakout inside the `<script>` templates.
