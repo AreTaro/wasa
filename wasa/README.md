@@ -41,6 +41,24 @@ If you have node installed and [`clasp`](https://github.com/google/clasp) global
 ## Managing Submissions
 When users submit packages via the beautiful frontend, their entries will populate the `Submissions` sheet.
 As the administrator:
-1. Review the package.
-2. If approved, manually copy the row data from `Submissions` into the `Approved` sheet.
-3. The React app is server-side injected and automatically reflects the `Approved` sheet upon next load.
+1. You can run the `Registry Admin` menu items directly from the Google Sheet toolbar (e.g., `Approve Selected Submissions`).
+2. The React app automatically reflects the `Approved` sheet upon next load.
+
+## Developer Instructions (Manifest Formatting)
+To enable automatic description updates, contributors should provide a direct **Raw JSON Link** to a metadata file hosted on their repository (e.g. `package.json` or `manifest.json`).
+
+Our backend (`pollManifestUpdates`) expects this file to be a valid JSON object containing at least a `"description"` key at the root level.
+
+**Correct Example (`manifest.json`):**
+```json
+{
+  "name": "your-awesome-package",
+  "description": "This text will be automatically synchronized with the registry!",
+  "version": "1.0.0"
+}
+```
+
+**Obtaining the URL:**
+- Developers **must** provide the raw link (not the HTML website page).
+- On **GitLab**: `https://gitlab.com/<user>/<repo>/-/raw/main/manifest.json`
+- On **GitHub**: `https://raw.githubusercontent.com/<user>/<repo>/main/manifest.json`
