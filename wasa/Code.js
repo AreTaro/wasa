@@ -83,7 +83,7 @@ function pollManifestUpdates() {
  * It also triggers the authorization flow for Emails if not already granted.
  */
 function initializeRegistry() {
-  // Force Apps Script to recognize the MailApp dependency for authorization
+  // Force Apps Script to recognize dependencies for authorization
   try {
     MailApp.getRemainingDailyQuota();
   } catch (e) { }
@@ -105,6 +105,17 @@ function initializeRegistry() {
   }
 
   Logger.log("Initialization complete!");
+}
+
+/**
+ * Run this function from the Apps Script Editor if you are completely stuck in an authorization loop.
+ * It manually triggers every sensitive Google service to force the OAuth popup to appear.
+ */
+function forceAuth() {
+  UrlFetchApp.fetch("https://www.google.com");
+  Session.getEffectiveUser().getEmail();
+  Session.getActiveUser().getEmail();
+  MailApp.getRemainingDailyQuota();
 }
 
 /**
