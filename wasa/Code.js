@@ -7,6 +7,7 @@
 const SETTINGS = {
   APPROVED_SHEET: "Approved",
   SUBMISSION_SHEET: "Submissions",
+  ARCHIVE_SHEET: "Archive",
   APP_TITLE: "Apps Script Registry",
   ALLOWED_MANIFEST_DOMAINS: ["gitlab.com", "raw.githubusercontent.com", "script.google.com"]
 };
@@ -102,6 +103,13 @@ function initializeRegistry() {
     sheet.appendRow(["Timestamp", "Type", "PackageID", "Name", "Description", "WebAppUrl", "ManualUrl", "RepoUrl", "ManifestUrl", "SubmitterEmail", "Status"]);
     sheet.setFrozenRows(1);
     Logger.log("Created Submissions sheet");
+  }
+
+  if (!doc.getSheetByName(SETTINGS.ARCHIVE_SHEET)) {
+    const sheet = doc.insertSheet(SETTINGS.ARCHIVE_SHEET);
+    sheet.appendRow(["ID", "Name", "Description", "WebAppUrl", "ManualUrl", "RepoUrl", "ManifestUrl", "SubmitterEmail", "DateAdded", "LastUpdated"]);
+    sheet.setFrozenRows(1);
+    Logger.log("Created Archive sheet");
   }
 
   Logger.log("Initialization complete!");
@@ -277,6 +285,9 @@ function onOpen() {
   ui.createMenu('Registry Admin')
     .addItem('Approve Selected Submissions', 'approveSelectedUi')
     .addItem('Reject Selected Submissions', 'rejectSelectedUi')
+    .addSeparator()
+    .addItem('Archive Selected Packages', 'archiveSelectedUi')
+    .addItem('Restore Archived Packages', 'restoreSelectedUi')
     .addToUi();
 }
 
@@ -426,5 +437,64 @@ function rejectSelectedUi() {
 
       subSheet.deleteRow(startRow + i);
     }
+  }
+}
+
+/**
+ * Moves highlighted rows from Approved to Archive.
+ */
+function archiveSelectedUi() {
+  _moveRowsUi(SETTINGS.APPROVED_SHEET, SETTINGS.ARCHIVE_SHEET, "Archive");
+}
+
+/**
+ * Moves highlighted rows from Archive back to Approved.
+ */
+function restoreSelectedUi() {
+  _moveRowsUi(SETTINGS.ARCHIVE_SHEET, SETTINGS.APPROVED_SHEET, "Restore");
+}
+
+/**
+ * Generic helper to move rows from one sheet to another (for Approved <-> Archive matching schemas)
+ */
+function _moveRowsUi(sourceSheetName, targetSheetName, actionName) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
+  const sourceSheet = ss.getSheetByName(sourceSheetName);
+  const targetSheet = ss.getSheetByName(targetSheetName);
+
+  if (!sourceSheet || !targetSheet) {
+    ui.alert("Error", `Required sheets are missing. Please run initializeRegistry() first.`, ui.ButtonSet.OK);
+    return;
+  }
+
+  if (ss.getActiveSheet().getName() !== sourceSheetName) {
+    ui.alert("Error", `Please run this from the ${sourceSheetName} sheet.`, ui.ButtonSet.OK);
+    return;
+  }
+
+  const range = sourceSheet.getActiveRange();
+  const startRow = range.getRow();
+  const numRows = range.getNumRows();
+
+  if (startRow <= 1) {
+    ui.alert("Error", "Please select valid dataset rows (not headers).", ui.ButtonSet.OK);
+    return;
+  }
+
+  const response = ui.alert(`Confirm ${actionName}`, `Are you sure you want to ${actionName.toLowerCase()} these ${numRows} package(s)?`, ui.ButtonSet.YES_NO);
+  if (response == ui.Button.YES) {
+    const values = sourceSheet.getRange(startRow, 1, numRows, sourceSheet.getLastColumn()).getValues();
+
+    // Map each row exactly to the target sheet
+    for (let i = 0; i < values.length; i++) {
+       targetSheet.appendRow(values[i]);
+    }
+
+    // Delete rows from bottom to top to preserve index integrity
+    for (let i = numRows - 1; i >= 0; i--) {
+      sourceSheet.deleteRow(startRow + i);
+    }
+    ui.alert("Success", `${numRows} package(s) ${actionName.toLowerCase()}d successfully.`, ui.ButtonSet.OK);
   }
 }
