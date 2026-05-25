@@ -102,6 +102,21 @@
       );
     };
 
+    // --- Helper: Format Date ---
+    const formatDate = (dateVal) => {
+      if (!dateVal) return "";
+      try {
+        const d = new Date(dateVal);
+        if (isNaN(d.getTime())) return dateVal;
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}/${month}/${day}`;
+      } catch (e) {
+        return dateVal;
+      }
+    };
+
     // --- Main App Component ---
     const App = () => {
       const [packages, setPackages] = useState(SERVER_DATA || []);
@@ -263,7 +278,7 @@
                               {pkg.Name}
                             </div>
                             <div className="text-xs font-medium text-slate-500 mt-1.5 flex items-center gap-1.5 bg-slate-100 w-max px-2 py-0.5 rounded-md">
-                              <Icon name="clock" className="w-3 h-3" /> Updated {pkg.LastUpdated || pkg.DateAdded || 'recently'}
+                              <Icon name="clock" className="w-3 h-3" /> Updated {pkg.LastUpdated || pkg.DateAdded ? formatDate(pkg.LastUpdated || pkg.DateAdded) : 'recently'}
                             </div>
                           </td>
                           <td className="px-6 py-5 align-top text-slate-600 leading-relaxed text-sm">
