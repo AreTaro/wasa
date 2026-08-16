@@ -117,6 +117,22 @@
       }
     };
 
+    // --- Helper: Extract Tags ---
+    const extractTags = (text) => {
+      if (!text || typeof text !== 'string') return [];
+      const regex = /#([\w\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\-]+)/g;
+      const matches = text.match(regex);
+      if (!matches) return [];
+      const unique = [];
+      matches.forEach(m => {
+        const tag = m.slice(1);
+        if (tag && !unique.some(u => u.toLowerCase() === tag.toLowerCase())) {
+          unique.push(tag);
+        }
+      });
+      return unique;
+    };
+
     // --- Main App Component ---
     const App = () => {
       const [packages, setPackages] = useState(SERVER_DATA || []);
@@ -133,12 +149,34 @@
 
       // Initialize icons
 
+      const handleTagClick = (tag) => {
+        const tagWithHash = `#${tag}`;
+        if (!searchTerm.includes(tagWithHash)) {
+          setSearchTerm(prev => prev.trim() ? `${prev.trim()} ${tagWithHash}` : tagWithHash);
+        }
+      };
 
       const filteredPackages = useMemo(() => {
+        const trimmed = searchTerm.trim().toLowerCase();
+        if (!trimmed) return packages;
+
+        const tokens = trimmed.split(/\s+/).filter(Boolean);
+
         return packages.filter(p => {
-          const nameMatch = (p.Name || "").toLowerCase().includes(searchTerm.toLowerCase());
-          const descMatch = (p.Description || "").toLowerCase().includes(searchTerm.toLowerCase());
-          return nameMatch || descMatch;
+          const pName = (p.Name || "").toLowerCase();
+          const pDesc = (p.Description || "").toLowerCase();
+          const pTags = extractTags(p.Description).map(t => t.toLowerCase());
+
+          return tokens.every(token => {
+            const rawToken = token;
+            const cleanToken = token.startsWith('#') ? token.slice(1) : token;
+
+            const nameMatch = pName.includes(rawToken) || (cleanToken && pName.includes(cleanToken));
+            const descMatch = pDesc.includes(rawToken) || (cleanToken && pDesc.includes(cleanToken));
+            const tagMatch = pTags.some(tag => tag === cleanToken || tag === rawToken || (cleanToken && tag.includes(cleanToken)));
+
+            return nameMatch || descMatch || tagMatch;
+          });
         });
       }, [packages, searchTerm]);
 
@@ -228,7 +266,7 @@
                   <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-200 group-focus-within:text-slate-400 transition-colors z-10" />
                   <input
                     type="text"
-                    placeholder="Search packages..."
+                    placeholder="Search packages or tags (#drive #gmail)..."
                     className="w-full md:w-64 pl-10 pr-4 py-2 bg-brand-600 border-2 border-transparent text-white placeholder-brand-200 rounded-xl focus:outline-none focus:bg-white focus:text-slate-900 focus:placeholder-slate-400 transition-all focus:w-full md:focus:w-80 shadow-inner"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
@@ -282,7 +320,27 @@
                             </div>
                           </td>
                           <td className="px-6 py-5 align-top text-slate-600 leading-relaxed text-sm">
-                            {pkg.Description}
+                            <div>{pkg.Description}</div>
+                            {(() => {
+                              const tags = extractTags(pkg.Description);
+                              if (tags.length === 0) return null;
+                              return (
+                                <div className="flex flex-wrap gap-1.5 mt-2.5">
+                                  {tags.map((tag, tIdx) => (
+                                    <button
+                                      key={tIdx}
+                                      type="button"
+                                      onClick={() => handleTagClick(tag)}
+                                      className="inline-flex items-center gap-1 bg-brand-50 hover:bg-brand-100 text-brand-600 border border-brand-100 px-2.5 py-0.5 rounded-md text-xs font-semibold transition-all hover:scale-105 cursor-pointer shadow-xs"
+                                      title={`Filter by #${tag}`}
+                                    >
+                                      <Icon name="tag" className="w-3 h-3 text-brand-500" />
+                                      #{tag}
+                                    </button>
+                                  ))}
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td className="px-6 py-5 align-top">
                             <div className="flex flex-col gap-2.5">
@@ -348,7 +406,8 @@
 
               <div className="space-y-1.5">
                 <label className="block text-sm font-semibold text-slate-700">Description <span className="text-red-500">*</span></label>
-                <textarea required rows="3" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} placeholder="What does this package do?" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-900 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 focus:bg-white transition-all outline-none resize-y"></textarea>
+                <textarea required rows="3" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} placeholder="What does this package do? (e.g. Sync files #drive #gmail)" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-900 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 focus:bg-white transition-all outline-none resize-y"></textarea>
+                <p className="text-xs text-slate-500 font-medium">Tip: Add hashtags like #drive or #gmail to tag your package.</p>
               </div>
 
               <div className="space-y-1.5">
