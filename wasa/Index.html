@@ -133,6 +133,12 @@
       return unique;
     };
 
+    // --- Helper: Clean Description text for display ---
+    const cleanDescription = (text) => {
+      if (!text || typeof text !== 'string') return "";
+      return text.replace(/#([\w\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\-]+)/g, '').replace(/\s+/g, ' ').trim();
+    };
+
     // --- Main App Component ---
     const App = () => {
       const [packages, setPackages] = useState(SERVER_DATA || []);
@@ -320,7 +326,7 @@
                             </div>
                           </td>
                           <td className="px-6 py-5 align-top text-slate-600 leading-relaxed text-sm">
-                            <div>{pkg.Description}</div>
+                            <div>{cleanDescription(pkg.Description)}</div>
                             {(() => {
                               const tags = extractTags(pkg.Description);
                               if (tags.length === 0) return null;
